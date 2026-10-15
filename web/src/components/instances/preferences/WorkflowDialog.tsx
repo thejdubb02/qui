@@ -669,6 +669,40 @@ const PATH_TEMPLATE_EXAMPLE = "/data/{{ .Category }}"
 const MOVE_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#move-path-templates"
 const EXPORT_PATH_DOCS_URL = "https://getqui.com/docs/features/automations/#save-path-templates"
 
+// The editor shows the first action condition it finds, enabled or not, and a save
+// writes it onto every action it keeps. Warn when that changes a kept action's condition.
+function firstActionCondition(conditions: ActionConditions): RuleCondition | null {
+  return conditions.speedLimits?.condition
+    ?? conditions.shareLimits?.condition
+    ?? conditions.pause?.condition
+    ?? conditions.resume?.condition
+    ?? conditions.recheck?.condition
+    ?? conditions.reannounce?.condition
+    ?? conditions.autoManagement?.condition
+    ?? conditions.delete?.condition
+    ?? conditions.tags?.[0]?.condition
+    ?? conditions.tag?.condition
+    ?? conditions.category?.condition
+    ?? conditions.move?.condition
+    ?? conditions.externalProgram?.condition
+    ?? conditions.exportToInstance?.condition
+    ?? null
+}
+
+function hasMixedActionConditions(conditions: ActionConditions | undefined): boolean {
+  if (!conditions) return false
+  const tagActions = conditions.tags && conditions.tags.length > 0 ? conditions.tags : [conditions.tag]
+  // autoManagement is kept whenever present: enabled false means "turn it off".
+  const kept = [
+    conditions.speedLimits, conditions.shareLimits, conditions.pause, conditions.resume,
+    conditions.recheck, conditions.reannounce, conditions.delete, ...tagActions,
+    conditions.category, conditions.move, conditions.externalProgram, conditions.exportToInstance,
+  ].filter(action => action?.enabled)
+  if (conditions.autoManagement) kept.push(conditions.autoManagement)
+  const shown = JSON.stringify(firstActionCondition(conditions))
+  return kept.some(action => JSON.stringify(action?.condition ?? null) !== shown)
+}
+
 export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess }: WorkflowDialogProps) {
   const { t } = useTranslation("instances")
   const queryClient = useQueryClient()
@@ -681,6 +715,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
     return SCORE_MULTIPLIER_DISABLED_FIELDS.map(field => ({ field, reason }))
   }, [t])
   const [formState, setFormState] = useState<FormState>(emptyFormState)
+  const mixedActionConditions = useMemo(() => hasMixedActionConditions(rule?.conditions), [rule])
   const [previewResult, setPreviewResult] = useState<AutomationPreviewResult | null>(null)
   const [previewInput, setPreviewInput] = useState<FormState | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -1097,21 +1132,7 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
         if (conditions) {
           exprGrouping = conditions.grouping
           // Get condition from any enabled action (they should all be the same)
-          actionCondition = conditions.speedLimits?.condition
-            ?? conditions.shareLimits?.condition
-            ?? conditions.pause?.condition
-            ?? conditions.resume?.condition
-            ?? conditions.recheck?.condition
-            ?? conditions.reannounce?.condition
-            ?? conditions.autoManagement?.condition
-            ?? conditions.delete?.condition
-            ?? conditions.tags?.[0]?.condition
-            ?? conditions.tag?.condition
-            ?? conditions.category?.condition
-            ?? conditions.move?.condition
-            ?? conditions.externalProgram?.condition
-            ?? conditions.exportToInstance?.condition
-            ?? null
+          actionCondition = firstActionCondition(conditions)
 
           if (conditions.speedLimits?.enabled) {
             speedLimitsEnabled = true
@@ -2587,6 +2608,11 @@ export function WorkflowDialog({ open, onOpenChange, instanceId, rule, onSuccess
                     disabledStateValues={getDisabledStateValues(fieldCapabilities, t)}
                     groupOptions={groupedConditionOptions}
                   />
+                  {mixedActionConditions && (
+                    <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-3 text-sm">
+                      <p>{t("preferences.workflowDialog.mixedActionConditions")}</p>
+                    </div>
+                  )}
                   {formState.deleteEnabled && !formState.actionCondition && (
                     <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm">
                       <p className="font-medium text-destructive">{t("preferences.workflowDialog.toast.deleteRequiresCondition")}</p>

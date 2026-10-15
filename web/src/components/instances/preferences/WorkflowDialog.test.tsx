@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import type { Automation, FilesystemCapabilities } from "@/types"
+import type { Automation, FilesystemCapabilities, RuleCondition } from "@/types"
 
 const mocks = vi.hoisted(() => {
   const t = (key: string) => key
@@ -60,6 +60,7 @@ afterEach(() => {
 })
 
 import { WorkflowDialog } from "./WorkflowDialog"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 const rule: Automation = {
   id: 1,
@@ -170,6 +171,53 @@ describe("WorkflowDialog tracker pattern", () => {
     const payload = mocks.save.mock.calls[0][2]
     expect(payload.trackerPattern).toBe(trackerPattern)
     expect(payload).not.toHaveProperty("trackerDomains")
+    client.clear()
+  })
+})
+
+describe("WorkflowDialog mixed action conditions", () => {
+  const packed: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "packed" }
+  const unpacked: RuleCondition = { field: "NAME", operator: "CONTAINS", value: "unpacked" }
+  const tag = (tags: string[], condition?: RuleCondition, enabled = true) => ({ enabled, tags, mode: "full" as const, condition })
+  const notice = key("mixedActionConditions")
+
+  const renderRule = (conditions: Automation["conditions"] | null) => {
+    mocks.instancesQuery.data = []
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <WorkflowDialog open onOpenChange={() => {}} instanceId={1} rule={conditions ? { ...rule, conditions } : null} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    )
+    return client
+  }
+
+  it.each([
+    { name: "two tag actions with different conditions", shown: true, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] } },
+    { name: "a condition on delete and none on pause", shown: true, conditions: { schemaVersion: "1", delete: { enabled: true, mode: "delete" as const, condition: packed }, pause: { enabled: true } } },
+    { name: "the same condition on every action", shown: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed)], pause: { enabled: true, condition: packed } } },
+    { name: "a different condition on a disabled action", shown: false, conditions: { schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked, false)] } },
+    { name: "a disabled action whose condition the editor shows", shown: true, conditions: { schemaVersion: "1", speedLimits: { enabled: false, condition: unpacked }, pause: { enabled: true, condition: packed } } },
+    { name: "auto management set to off with no condition", shown: true, conditions: { schemaVersion: "1", pause: { enabled: true, condition: packed }, autoManagement: { enabled: false } } },
+    { name: "one enabled action", shown: false, conditions: { schemaVersion: "1", pause: { enabled: true, condition: packed } } },
+    { name: "a new rule", shown: false, conditions: null },
+  ])("shows the notice for $name: $shown", ({ shown, conditions }) => {
+    const client = renderRule(conditions as Automation["conditions"] | null)
+    expect(screen.queryByText(notice) !== null).toBe(shown)
+    client.clear()
+  })
+
+  it("keeps save enabled and saves one condition on every action", async () => {
+    mocks.save.mockResolvedValue(rule)
+    const client = renderRule({ schemaVersion: "1", tags: [tag(["packed"], packed), tag(["unpacked"], unpacked)] })
+    expect(screen.queryByText(notice)).not.toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: key("save") }))
+    await waitFor(() => expect(mocks.save).toHaveBeenCalled())
+    const tags = mocks.save.mock.calls[0][2].conditions.tags
+    expect(tags.map((t: { condition: unknown }) => t.condition)).toEqual([packed, packed])
     client.clear()
   })
 })
