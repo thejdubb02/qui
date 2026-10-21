@@ -23,6 +23,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Install dependencies
+        run: go mod download
+
       - name: Create placeholder web dist for embed
         run: mkdir -p web/dist && touch web/dist/.gitkeep
 
@@ -53,6 +56,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Install dependencies
+        run: go mod download
 
       - name: Test automation docs JSON examples and generated files
         run: go test -count=1 -run '^(TestAutomationDocsExamples|TestGeneratedFilesAreCurrent)$' ./internal/api/handlers ./internal/automationsgen
@@ -86,6 +92,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Install dependencies
+        run: go mod download
 
       - name: Install sqlite3 + psql clients
         run: |

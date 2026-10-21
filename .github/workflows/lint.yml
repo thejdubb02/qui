@@ -24,6 +24,9 @@ jobs:
           go-version-file: "go.mod"
           cache: true
 
+      - name: Install dependencies
+        run: go mod download
+
       - name: Compile and vet Windows packages and tests
         run: go vet ./...
 
@@ -109,6 +112,9 @@ jobs:
         with:
           go-version-file: "go.mod"
           cache: true
+
+      - name: Install dependencies
+        run: go mod download
 
       # continue-on-error so a gofix failure reports itself without taking the
       # lint step with it: the job used to fail here and skip linting entirely.
